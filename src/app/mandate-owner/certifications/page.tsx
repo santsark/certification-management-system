@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
-import { Plus, MoreVertical, Eye, Edit, Send, Users, FileCheck, XCircle } from 'lucide-react';
+import { Plus, MoreVertical, Eye, Edit, Send, Users, FileCheck, XCircle, ArrowUpDown } from 'lucide-react';
+import DeadlineBadge from '@/components/DeadlineBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ interface Certification {
     completedCount: number;
     completionPercentage: number;
     createdAt: Date;
+    deadline: string | null;
 }
 
 interface Mandate {
@@ -190,6 +192,19 @@ export default function CertificationsPage() {
                                     <TableHead>Title</TableHead>
                                     <TableHead>Mandate</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead>
+                                        <Button variant="ghost" onClick={() => {
+                                            const sorted = [...filteredCertifications].sort((a, b) => {
+                                                if (!a.deadline) return 1;
+                                                if (!b.deadline) return -1;
+                                                return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+                                            });
+                                            setCertifications(sorted);
+                                        }}>
+                                            Deadline
+                                            <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
                                     <TableHead>Assigned</TableHead>
                                     <TableHead className="w-[200px]">Completion</TableHead>
                                     <TableHead>Created</TableHead>
@@ -202,6 +217,9 @@ export default function CertificationsPage() {
                                         <TableCell className="font-medium">{cert.title}</TableCell>
                                         <TableCell>{cert.mandateName}</TableCell>
                                         <TableCell>{getStatusBadge(cert.status)}</TableCell>
+                                        <TableCell>
+                                            <DeadlineBadge deadline={cert.deadline ? new Date(cert.deadline) : null} size="sm" />
+                                        </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">
                                                 <Users className="h-4 w-4 text-muted-foreground" />
@@ -246,7 +264,7 @@ export default function CertificationsPage() {
                                                     <Link href={`/mandate-owner/certifications/${cert.id}/assign`}>
                                                         <DropdownMenuItem>
                                                             <Users className="mr-2 h-4 w-4" />
-                                                            Assign Attesters
+                                                            {cert.status === 'closed' ? "View Assignments" : "Assign Attesters"}
                                                         </DropdownMenuItem>
                                                     </Link>
                                                     {canViewResponses(cert) && (

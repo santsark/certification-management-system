@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { db } from '@/db';
-import { sessions, users } from '@/db/schema';
+import { sessions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 

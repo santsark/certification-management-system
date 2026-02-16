@@ -35,6 +35,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { FileText, Edit, Eye } from 'lucide-react';
+import DeadlineBadge from '@/components/DeadlineBadge';
 
 const mandateSchema = z.object({
     name: z.string().min(1, 'Name is required'),
@@ -56,6 +57,7 @@ type Mandate = {
     backupOwnerEmail: string | null;
     status: 'open' | 'closed';
     createdAt: string;
+    nextDeadline: string | null;
 };
 
 type User = {
@@ -350,6 +352,7 @@ export default function MandatesPage() {
                                 <TableHead>Owner</TableHead>
                                 <TableHead>Backup Owner</TableHead>
                                 <TableHead>Status</TableHead>
+                                <TableHead>Next Deadline</TableHead>
                                 <TableHead>Created</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -380,6 +383,9 @@ export default function MandatesPage() {
                                             <Badge variant={mandate.status === 'open' ? 'default' : 'secondary'}>
                                                 {mandate.status}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <DeadlineBadge deadline={mandate.nextDeadline ? new Date(mandate.nextDeadline) : null} size="sm" />
                                         </TableCell>
                                         <TableCell>
                                             {new Date(mandate.createdAt).toLocaleDateString()}

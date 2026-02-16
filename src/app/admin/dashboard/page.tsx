@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Users, FileText, CheckCircle2, XCircle } from 'lucide-react';
+import { Users, FileText, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Stats {
     users: {
@@ -21,6 +22,7 @@ interface Stats {
             closed: number;
         };
     };
+    overdueCertifications: number;
 }
 
 export default function AdminDashboard() {
@@ -127,6 +129,24 @@ export default function AdminDashboard() {
                         <div className="text-2xl font-bold">{stats.mandates.byStatus.closed}</div>
                         <p className="text-xs text-muted-foreground mt-2">
                             Completed mandates
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card
+                    className="cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => window.location.href = '/admin/mandates?sort=deadline'}
+                >
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Overdue Certifications</CardTitle>
+                        <AlertTriangle className={cn("h-4 w-4", stats.overdueCertifications > 0 ? "text-destructive" : "text-green-600")} />
+                    </CardHeader>
+                    <CardContent>
+                        <div className={cn("text-2xl font-bold", stats.overdueCertifications > 0 && "text-destructive")}>
+                            {stats.overdueCertifications}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                            Assignments past due
                         </p>
                     </CardContent>
                 </Card>

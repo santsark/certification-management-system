@@ -16,6 +16,12 @@ import { AIAssistant } from '@/components/certification/AIAssistant';
 import { QuestionBuilder } from '@/components/certification/QuestionBuilder';
 import { certificationFormSchema, type CertificationFormData, type CertificationQuestion } from '@/lib/validations/certification';
 import { v4 as uuidv4 } from 'uuid';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import DeadlineBadge from '@/components/DeadlineBadge';
 
 interface Mandate {
     id: string;
@@ -44,6 +50,7 @@ export default function NewCertificationPage() {
             title: '',
             description: '',
             questions: [],
+            deadline: null,
         },
     });
 
@@ -226,6 +233,50 @@ export default function NewCertificationPage() {
                             {errors.description && (
                                 <p className="text-sm text-destructive">{errors.description.message}</p>
                             )}
+                        </div>
+
+                        <div className="space-y-2 flex flex-col">
+                            <Label>Attestation Deadline</Label>
+                            <div className="flex items-center gap-4">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                                "w-[240px] pl-3 text-left font-normal",
+                                                !watch('deadline') && "text-muted-foreground"
+                                            )}
+                                        >
+                                            {watch('deadline') ? (
+                                                format(new Date(watch('deadline')!), "PPP")
+                                            ) : (
+                                                <span>Select a deadline (required to publish)</span>
+                                            )}
+                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                            mode="single"
+                                            selected={watch('deadline') ? new Date(watch('deadline')!) : undefined}
+                                            onSelect={(date) => setValue('deadline', date ? date.toISOString() : null)}
+                                            disabled={(date) =>
+                                                date < new Date(new Date().setHours(0, 0, 0, 0))
+                                            }
+                                            initialFocus
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                                {watch('deadline') && (
+                                    <DeadlineBadge deadline={new Date(watch('deadline')!)} />
+                                )}
+                            </div>
+                            {errors.deadline && (
+                                <p className="text-sm text-destructive">{errors.deadline.message}</p>
+                            )}
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                Only certifications with a deadline can be published.
+                            </p>
                         </div>
                     </CardContent>
                 </Card>

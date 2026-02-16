@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { certificationAssignments, certifications, mandates } from '@/db/schema';
 import { eq, and, or } from 'drizzle-orm';
 import { requireMandateOwner } from '@/lib/mandate-owner-auth';
+import { assertCertNotClosed, AppError } from '@/lib/cert-guards';
 
 export async function DELETE(
     request: NextRequest,
@@ -12,6 +13,9 @@ export async function DELETE(
     try {
         const user = await requireMandateOwner();
         const { id: certId, attesterId } = await params;
+
+        // Guard against closed certifications
+        await assertCertNotClosed(certId);
 
         // Fetch certification and verify ownership
         const cert = await db
@@ -69,6 +73,9 @@ export async function DELETE(
 
     } catch (error) {
         console.error('Remove attester error:', error);
+        if (error instanceof AppError) {
+            return NextResponse.json({ error: error.message }, { status: error.status });
+        }
         return NextResponse.json(
             { error: 'Failed to remove attester assignment' },
             { status: 500 }

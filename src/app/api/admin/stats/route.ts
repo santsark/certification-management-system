@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { users, mandates } from '@/db/schema';
-import { eq, count, sql } from 'drizzle-orm';
+import { users, mandates, certifications } from '@/db/schema';
+import { eq, count, sql, and } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/admin-auth';
 
 export async function GET() {
@@ -32,6 +32,17 @@ export async function GET() {
             .from(mandates)
             .groupBy(mandates.status);
 
+        // Get count of overdue open certifications
+        const [overdueCountResult] = await db
+            .select({ count: count() })
+            .from(certifications)
+            .where(
+                and(
+                    eq(certifications.status, 'open'),
+                    sql`${certifications.deadline} < NOW()`
+                )
+            );
+
         // Format response
         const stats = {
             users: {
@@ -49,6 +60,7 @@ export async function GET() {
                     closed: mandatesByStatus.find(s => s.status === 'closed')?.count || 0,
                 },
             },
+            overdueCertifications: overdueCountResult.count,
         };
 
         return NextResponse.json(stats);

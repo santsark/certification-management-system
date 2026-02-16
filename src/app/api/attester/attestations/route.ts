@@ -5,6 +5,20 @@ import { eq, and, or } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { validateSession } from '@/lib/auth';
 
+interface Question {
+    id: string;
+    question: string;
+    type: string;
+    options?: string[];
+    required: boolean;
+}
+
+interface Answer {
+    question_id: string;
+    answer: any;
+    comments?: string;
+}
+
 export async function GET() {
     try {
         // Get current user session
@@ -69,6 +83,7 @@ export async function GET() {
                 const [certDetails] = await db
                     .select({
                         description: certifications.description,
+                        deadline: certifications.deadline, // Fetch deadline
                         questions: certifications.questions,
                     })
                     .from(certifications)
@@ -76,11 +91,11 @@ export async function GET() {
                     .limit(1);
 
                 // Calculate progress
-                const questions = (certDetails?.questions as any[]) || [];
+                const questions = (certDetails?.questions as Question[]) || [];
                 const totalQuestions = questions.length;
-                const answers = (response?.responses as any[]) || [];
+                const answers = (response?.responses as Answer[]) || [];
                 const answeredCount = answers.filter(
-                    (a: any) => a.answer !== null && a.answer !== undefined && a.answer !== ''
+                    (a: Answer) => a.answer !== null && a.answer !== undefined && a.answer !== ''
                 ).length;
 
                 return {
@@ -90,7 +105,8 @@ export async function GET() {
                     certificationDescription: certDetails?.description || null,
                     mandateName: assignment.mandateName,
                     status: response?.status || 'pending',
-                    dueDate: null, // Could add due date logic later
+                    dueDate: null,
+                    deadline: (certDetails as any)?.deadline || null,
                     submittedAt: response?.submittedAt,
                     assignedAt: assignment.assignedAt,
                     totalQuestions,

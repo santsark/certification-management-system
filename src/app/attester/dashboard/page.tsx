@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CheckCircle2, Clock, AlertCircle, FileText, Calendar } from 'lucide-react';
+import DeadlineBadge from '@/components/DeadlineBadge';
 
 interface Attestation {
     id: string;
@@ -16,6 +17,7 @@ interface Attestation {
     certificationDescription: string | null;
     mandateName: string;
     status: 'pending' | 'in_progress' | 'submitted';
+    deadline: string | null;
     dueDate: string | null;
     submittedAt: string | null;
     assignedAt: string;
@@ -51,6 +53,31 @@ export default function AttesterDashboard() {
     const filteredAndSorted = attestations
         .filter(a => filterMandate === 'all' || a.mandateName === filterMandate)
         .sort((a, b) => {
+            // First priority: Overdue items (deadline < now)
+            // Second priority: Warning items (deadline <= 3 days)
+            // Third priority: Others
+            // Within same priority: Sort by deadline ascending
+
+            const now = new Date().getTime();
+            const getScore = (item: Attestation) => {
+                if (!item.deadline) return 3; // No deadline = lowest priority for "urgent" sorting
+                const deadline = new Date(item.deadline).getTime();
+                if (deadline < now) return 0; // Overdue
+                const daysDiff = (deadline - now) / (1000 * 60 * 60 * 24);
+                if (daysDiff <= 3) return 1; // Warning
+                return 2; // Ok
+            };
+
+            const scoreA = getScore(a);
+            const scoreB = getScore(b);
+
+            if (scoreA !== scoreB) return scoreA - scoreB;
+
+            // If scores equal, sort by actual deadline
+            if (a.deadline && b.deadline) {
+                return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+            }
+
             if (sortBy === 'assigned') {
                 return new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime();
             } else if (sortBy === 'title') {
@@ -177,6 +204,9 @@ export default function AttesterDashboard() {
                                                     <Badge variant={attestation.status === 'in_progress' ? 'outline' : 'secondary'}>
                                                         {attestation.status === 'in_progress' ? 'In Progress' : 'Not Started'}
                                                     </Badge>
+                                                </div>
+                                                <div className="mt-2">
+                                                    <DeadlineBadge deadline={attestation.deadline ? new Date(attestation.deadline) : null} size="sm" />
                                                 </div>
                                             </CardHeader>
                                             <CardContent className="space-y-4">

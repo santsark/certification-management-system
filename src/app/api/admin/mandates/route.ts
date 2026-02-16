@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { mandates, users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { mandates, users, certifications } from '@/db/schema';
+import { eq, sql, and, min } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/admin-auth';
 import { createMandateSchema } from '@/lib/schemas';
 
@@ -57,16 +57,31 @@ export async function GET() {
             })
         );
 
-        return NextResponse.json({ mandates: mandatesWithBackupOwner });
-    } catch (error: any) {
-        console.error('Get mandates error:', error);
+        // Fetch next deadline for each mandate
+        const mandatesWithDetails = await Promise.all(
+            mandatesWithBackupOwner.map(async (mandate) => {
+                const [nextDeadlineResult] = await db
+                    .select({
+                        nextDeadline: min(certifications.deadline),
+                    })
+                    .from(certifications)
+                    .where(
+                        and(
+                            eq(certifications.mandateId, mandate.id),
+                            eq(certifications.status, 'open')
+                        )
+                    );
 
-        if (error.message?.includes('Unauthorized')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-        if (error.message?.includes('Forbidden')) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
+                return {
+                    ...mandate,
+                    nextDeadline: nextDeadlineResult?.nextDeadline || null,
+                };
+            })
+        );
+
+        return NextResponse.json({ mandates: mandatesWithDetails });
+    } catch (error: unknown) {
+        console.error('Get mandates error:', error);
 
         return NextResponse.json(
             { error: 'Failed to fetch mandates' },
@@ -150,15 +165,8 @@ export async function POST(request: NextRequest) {
             .returning();
 
         return NextResponse.json({ mandate: newMandate }, { status: 201 });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Create mandate error:', error);
-
-        if (error.message?.includes('Unauthorized')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-        if (error.message?.includes('Forbidden')) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
 
         return NextResponse.json(
             { error: 'Failed to create mandate' },

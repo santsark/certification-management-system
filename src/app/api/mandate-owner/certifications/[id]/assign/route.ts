@@ -1,10 +1,10 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { certificationAssignments, certifications, mandates, users } from '@/db/schema';
 import { eq, and, or, inArray } from 'drizzle-orm';
 import { requireMandateOwner } from '@/lib/mandate-owner-auth';
 import { createNotification } from '@/lib/notifications';
+import { assertCertNotClosed, AppError } from '@/lib/cert-guards';
 import { z } from 'zod';
 
 const assignAttestersSchema = z.object({
@@ -19,6 +19,9 @@ export async function POST(
         const user = await requireMandateOwner();
         const { id: certId } = await params;
         const body = await request.json();
+
+        // Guard against closed certifications
+        await assertCertNotClosed(certId);
 
         // Validate input
         const validationResult = assignAttestersSchema.safeParse(body);
@@ -116,6 +119,9 @@ export async function POST(
 
     } catch (error) {
         console.error('Assign attesters error:', error);
+        if (error instanceof AppError) {
+            return NextResponse.json({ error: error.message }, { status: error.status });
+        }
         return NextResponse.json(
             { error: 'Failed to assign attesters' },
             { status: 500 }

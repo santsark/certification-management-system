@@ -24,6 +24,7 @@ export const certificationFormSchema = z.object({
     title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
     description: z.string().optional(),
     questions: z.array(certificationQuestionSchema).min(1, 'At least one question is required').max(5, 'Maximum 5 questions allowed'),
+    deadline: z.string().optional().nullable(),
 });
 
 export type CertificationQuestion = z.infer<typeof certificationQuestionSchema>;

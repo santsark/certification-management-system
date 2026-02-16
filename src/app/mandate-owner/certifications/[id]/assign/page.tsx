@@ -1,15 +1,16 @@
 
+
 "use client";
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Search, Trash2, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Search, Trash2, AlertTriangle, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ interface CertificationDetails {
     title: string;
     description: string;
     status: string;
+    deadline: string | null;
 }
 
 export default function AssignAttestersPage({ params }: { params: Promise<{ id: string }> }) {
@@ -89,7 +91,10 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
                 body: JSON.stringify({ attesterIds: selectedAttesters }),
             });
 
-            if (!res.ok) throw new Error("Failed to assign attesters");
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || "Failed to assign attesters");
+            }
 
             const data = await res.json();
             toast.success(data.message);
@@ -108,9 +113,9 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
 
             setSelectedAttesters([]);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error assigning attesters:", error);
-            toast.error("Failed to assign attesters");
+            toast.error(error.message || "Failed to assign attesters");
         } finally {
             setAssigning(false);
         }
@@ -122,7 +127,10 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
                 method: "DELETE",
             });
 
-            if (!res.ok) throw new Error("Failed to remove assignment");
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || "Failed to remove assignment");
+            }
 
             toast.success("Attester unassigned successfully");
 
@@ -138,13 +146,14 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
             const available = attestersData.filter((a: Attester) => !assignedIds.has(a.id));
             setAvailableAttesters(available);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error removing assignment:", error);
-            toast.error("Failed to remove assignment");
+            toast.error(error.message || "Failed to remove assignment");
         }
     };
 
     const toggleAttesterSelection = (attesterId: string) => {
+        if (isClosed) return;
         setSelectedAttesters((prev) =>
             prev.includes(attesterId)
                 ? prev.filter((id) => id !== attesterId)
@@ -156,6 +165,8 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
         attester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         attester.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const isClosed = certification?.status === 'closed';
 
     if (loading) {
         return (
@@ -174,12 +185,25 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
                     </Button>
                 </Link>
                 <div>
-                    <h1 className="text-2xl font-bold">Assign Attesters</h1>
+                    <h1 className="text-2xl font-bold flex items-center gap-2">
+                        {isClosed ? "Assignment History (Read Only)" : "Assign Attesters"}
+                        {isClosed && <Lock className="h-5 w-5 text-muted-foreground" />}
+                    </h1>
                     <p className="text-muted-foreground">
                         {certification?.title}
                     </p>
                 </div>
             </div>
+
+            {isClosed && (
+                <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Locked</AlertTitle>
+                    <AlertDescription>
+                        This certification is closed. Assignments are locked and cannot be changed.
+                    </AlertDescription>
+                </Alert>
+            )}
 
             <div className="grid gap-6 md:grid-cols-2">
                 <Card className="h-full flex flex-col">
@@ -193,6 +217,7 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="bg-background"
+                            disabled={isClosed}
                         />
 
                         <div className="border rounded-md flex-1 overflow-y-auto min-h-[300px] p-2 space-y-2 max-h-[500px]">
@@ -205,14 +230,17 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
                                     <div
                                         key={attester.id}
                                         className={cn(
-                                            "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-accent",
-                                            selectedAttesters.includes(attester.id) ? "bg-accent border-primary" : "bg-card"
+                                            "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                                            !isClosed && "cursor-pointer hover:bg-accent",
+                                            selectedAttesters.includes(attester.id) ? "bg-accent border-primary" : "bg-card",
+                                            isClosed && "opacity-50 cursor-not-allowed"
                                         )}
                                         onClick={() => toggleAttesterSelection(attester.id)}
                                     >
                                         <Checkbox
                                             checked={selectedAttesters.includes(attester.id)}
                                             onCheckedChange={() => toggleAttesterSelection(attester.id)}
+                                            disabled={isClosed}
                                         />
                                         <div className="flex-1 overflow-hidden">
                                             <div className="font-medium truncate">{attester.name}</div>
@@ -227,9 +255,15 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
                             <div className="text-sm text-muted-foreground">
                                 {selectedAttesters.length} selected
                             </div>
-                            <Button onClick={handleAssign} disabled={selectedAttesters.length === 0 || assigning}>
-                                {assigning ? "Assigning..." : "Assign Selected"}
-                            </Button>
+                            {!isClosed ? (
+                                <Button onClick={handleAssign} disabled={selectedAttesters.length === 0 || assigning}>
+                                    {assigning ? "Assigning..." : "Assign Selected"}
+                                </Button>
+                            ) : (
+                                <Button disabled variant="outline">
+                                    Locked
+                                </Button>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -259,14 +293,16 @@ export default function AssignAttestersPage({ params }: { params: Promise<{ id: 
                                                 <div className="text-xs text-muted-foreground">{attester.email}</div>
                                             </div>
                                         </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                            onClick={() => handleRemove(attester.id)}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                        {!isClosed && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                onClick={() => handleRemove(attester.id)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
                                 ))
                             )}

@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
                 description: description || null,
                 status: 'draft',
                 questions: questions as any, // JSONB type
+                deadline: validationResult.data.deadline ? new Date(validationResult.data.deadline) : null,
                 createdBy: user.id,
             })
             .returning();

@@ -59,6 +59,24 @@ export async function POST(
             );
         }
 
+        if (!cert.deadline) {
+            return NextResponse.json(
+                { error: 'A deadline is required before publishing' },
+                { status: 400 }
+            );
+        }
+
+        const deadline = new Date(cert.deadline);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (deadline < today) {
+            return NextResponse.json(
+                { error: 'Deadline cannot be in the past' },
+                { status: 400 }
+            );
+        }
+
         // Update status to open and set published_at
         const result = await db
             .update(certifications)

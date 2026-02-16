@@ -28,6 +28,7 @@ export async function GET(
                 createdAt: certifications.createdAt,
                 updatedAt: certifications.updatedAt,
                 publishedAt: certifications.publishedAt,
+                deadline: certifications.deadline,
                 mandateName: mandates.name,
             })
             .from(certifications)
@@ -120,6 +121,22 @@ export async function PATCH(
             );
         }
 
+        // Check deadline restrictions for open certifications
+        if (existing.status === 'open' && validationResult.data.deadline) {
+            const newDeadline = new Date(validationResult.data.deadline);
+            // If there was an existing deadline, new one must be >= existing
+            if (existing.deadline) {
+                const existingDeadline = new Date(existing.deadline);
+                // Compare timestamps to allow same day (or greater)
+                if (newDeadline.getTime() < existingDeadline.getTime()) {
+                    return NextResponse.json(
+                        { error: 'Cannot move deadline to an earlier date for open certifications' },
+                        { status: 400 }
+                    );
+                }
+            }
+        }
+
         // Update certification
         const result = await db
             .update(certifications)
@@ -128,6 +145,7 @@ export async function PATCH(
                 title,
                 description: description || null,
                 questions: questions as any,
+                deadline: validationResult.data.deadline ? new Date(validationResult.data.deadline) : null,
                 updatedAt: new Date(),
             })
             .where(eq(certifications.id, certId))

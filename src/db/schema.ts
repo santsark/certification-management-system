@@ -56,6 +56,7 @@ export const certifications = pgTable('certifications', {
     description: text('description'),
     status: certificationStatusEnum('status').default('draft').notNull(),
     questions: jsonb('questions').notNull(),
+    deadline: timestamp('deadline'),
     createdBy: uuid('created_by')
         .references(() => users.id)
         .notNull(),

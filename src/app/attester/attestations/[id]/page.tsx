@@ -3,8 +3,9 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { ArrowLeft, Save, Send, Clock, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Send, Clock, CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
+import DeadlineBadge from "@/components/DeadlineBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,7 @@ interface AttestationData {
         title: string;
         description: string;
         status: string;
+        deadline: string | null;
         questions: Question[];
     };
     mandate: {
@@ -408,6 +410,7 @@ export default function AttestationFormPage({ params }: { params: Promise<{ id: 
                         <h1 className="text-3xl font-bold">{data.certification.title}</h1>
                         <div className="flex items-center gap-2 mt-2">
                             <Badge variant="outline">{data.mandate.name}</Badge>
+                            <DeadlineBadge deadline={data.certification.deadline ? new Date(data.certification.deadline) : null} />
                             {data.response?.status === 'submitted' && (
                                 <Badge variant="default" className="bg-green-100 text-green-800">
                                     <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -420,6 +423,19 @@ export default function AttestationFormPage({ params }: { params: Promise<{ id: 
                         </div>
                     </div>
                 </div>
+
+                {/* Overdue Banner */}
+                {data.certification.deadline && new Date(data.certification.deadline) < new Date() && data.response?.status !== 'submitted' && (
+                    <Card className="bg-red-50 border-red-200">
+                        <CardContent className="py-4 flex items-center gap-3 text-red-800">
+                            <AlertTriangle className="h-5 w-5" />
+                            <div>
+                                <p className="font-semibold">This attestation is overdue!</p>
+                                <p className="text-sm">The deadline was {new Date(data.certification.deadline).toLocaleDateString()}. Please submit your response as soon as possible.</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {data.certification.description && (
                     <p className="text-muted-foreground">{data.certification.description}</p>

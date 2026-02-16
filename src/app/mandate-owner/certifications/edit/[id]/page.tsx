@@ -16,6 +16,12 @@ import { useToast } from '@/hooks/use-toast';
 import { AIAssistant } from '@/components/certification/AIAssistant';
 import { QuestionBuilder } from '@/components/certification/QuestionBuilder';
 import { certificationFormSchema, type CertificationFormData, type CertificationQuestion } from '@/lib/validations/certification';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import DeadlineBadge from '@/components/DeadlineBadge';
 
 interface Mandate {
     id: string;
@@ -30,6 +36,7 @@ interface CertificationData {
     status: string;
     questions: any[];
     publishedAt: Date | null;
+    deadline?: Date | string | null;
 }
 
 export default function EditCertificationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -59,6 +66,7 @@ export default function EditCertificationPage({ params }: { params: Promise<{ id
             title: '',
             description: '',
             questions: [],
+            deadline: null,
         },
     });
 
@@ -84,6 +92,7 @@ export default function EditCertificationPage({ params }: { params: Promise<{ id
                     title: certData.title,
                     description: certData.description || '',
                     questions: certData.questions || [],
+                    deadline: certData.deadline ? new Date(certData.deadline).toISOString() : null,
                 });
             } catch (error) {
                 toast({
@@ -270,6 +279,65 @@ export default function EditCertificationPage({ params }: { params: Promise<{ id
                             {errors.description && (
                                 <p className="text-sm text-destructive">{errors.description.message}</p>
                             )}
+                        </div>
+
+                        <div className="space-y-2 flex flex-col">
+                            <Label>Attestation Deadline</Label>
+                            <div className="flex items-center gap-4">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                                "w-[240px] pl-3 text-left font-normal",
+                                                !watch('deadline') && "text-muted-foreground"
+                                            )}
+                                        >
+                                            {watch('deadline') ? (
+                                                format(new Date(watch('deadline')!), "PPP")
+                                            ) : (
+                                                <span>Select a deadline (required to publish)</span>
+                                            )}
+                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                            mode="single"
+                                            selected={watch('deadline') ? new Date(watch('deadline')!) : undefined}
+                                            onSelect={(date) => setValue('deadline', date ? date.toISOString() : null)}
+                                            disabled={(date) => {
+                                                const today = new Date(new Date().setHours(0, 0, 0, 0));
+                                                // If open and has a deadline, cannot select earlier than current deadline (unless extending)
+                                                // Requirement: "If certification is open, allow deadline to be extended (not moved earlier)"
+                                                // Wait, the requirement says "not moved earlier". This implies stricter check.
+                                                // But UI disabled check handles individual dates.
+                                                // If status is open, disable all dates before (original deadline OR today).
+
+                                                if (certification?.status === 'open' && certification.deadline) {
+                                                    const currentDeadline = new Date(certification.deadline);
+                                                    // If selecting a new date, it must be >= currentDeadline
+                                                    // Also must be >= today (implicitly covered if currentDeadline >= today, but if passed...)
+                                                    return date < currentDeadline || date < today;
+                                                }
+                                                return date < today;
+                                            }}
+                                            initialFocus
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                                {watch('deadline') && (
+                                    <DeadlineBadge deadline={new Date(watch('deadline')!)} />
+                                )}
+                            </div>
+                            {errors.deadline && (
+                                <p className="text-sm text-destructive">{errors.deadline.message}</p>
+                            )}
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                {certification?.status === 'open'
+                                    ? "For published certifications, deadlines can only be extended."
+                                    : "Only certifications with a deadline can be published."}
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
