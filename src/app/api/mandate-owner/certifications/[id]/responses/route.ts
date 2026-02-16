@@ -47,6 +47,8 @@ export async function GET(
                 attesterId: users.id,
                 name: users.name,
                 email: users.email,
+                level: certificationAssignments.level,
+                levelGroupId: certificationAssignments.levelGroupId,
             })
             .from(certificationAssignments)
             .innerJoin(users, eq(certificationAssignments.attesterId, users.id))
@@ -74,6 +76,8 @@ export async function GET(
                     name: assignment.name,
                     email: assignment.email,
                 },
+                level: assignment.level,
+                levelGroupId: assignment.levelGroupId,
                 status: response ? response.status : 'pending',
                 submittedAt: response ? response.submittedAt : null,
             };

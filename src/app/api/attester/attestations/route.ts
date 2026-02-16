@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { certificationAssignments, certifications, mandates, attestationResponses } from '@/db/schema';
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, or, inArray } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { validateSession } from '@/lib/auth';
 
@@ -46,6 +46,8 @@ export async function GET() {
                 certificationStatus: certifications.status,
                 mandateName: mandates.name,
                 assignedAt: certificationAssignments.assignedAt,
+                level: certificationAssignments.level,
+                levelGroupId: certificationAssignments.levelGroupId,
             })
             .from(certificationAssignments)
             .innerJoin(certifications, eq(certificationAssignments.certificationId, certifications.id))
@@ -90,6 +92,43 @@ export async function GET() {
                     .where(eq(certifications.id, assignment.certificationId))
                     .limit(1);
 
+                // Determine Lock Status for L2
+                let isLocked = false;
+                let l1Progress = null;
+
+                if (assignment.level === 2 && assignment.levelGroupId) {
+                    // Check L1 completion for this group
+                    const l1Assignments = await db
+                        .select({ attesterId: certificationAssignments.attesterId })
+                        .from(certificationAssignments)
+                        .where(and(
+                            eq(certificationAssignments.certificationId, assignment.certificationId),
+                            eq(certificationAssignments.levelGroupId, assignment.levelGroupId),
+                            eq(certificationAssignments.level, 1)
+                        ));
+
+                    if (l1Assignments.length > 0) {
+                        const l1Ids = l1Assignments.map(a => a.attesterId);
+
+                        const l1Responses = await db
+                            .select({ status: attestationResponses.status })
+                            .from(attestationResponses)
+                            .where(and(
+                                eq(attestationResponses.certificationId, assignment.certificationId),
+                                inArray(attestationResponses.attesterId, l1Ids),
+                                eq(attestationResponses.status, 'submitted')
+                            ));
+
+                        const totalL1 = l1Assignments.length;
+                        const submittedL1 = l1Responses.length;
+
+                        l1Progress = { total: totalL1, submitted: submittedL1 };
+                        if (submittedL1 < totalL1) {
+                            isLocked = true;
+                        }
+                    }
+                }
+
                 // Calculate progress
                 const questions = (certDetails?.questions as Question[]) || [];
                 const totalQuestions = questions.length;
@@ -111,6 +150,9 @@ export async function GET() {
                     assignedAt: assignment.assignedAt,
                     totalQuestions,
                     answeredQuestions: answeredCount,
+                    level: assignment.level,
+                    isLocked,
+                    l1Progress
                 };
             })
         );

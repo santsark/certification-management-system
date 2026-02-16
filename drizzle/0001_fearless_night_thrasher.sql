@@ -1,5 +1,13 @@
-CREATE TYPE "public"."attestation_status" AS ENUM('in_progress', 'submitted');--> statement-breakpoint
-CREATE TYPE "public"."certification_status" AS ENUM('draft', 'open', 'closed');--> statement-breakpoint
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'attestation_status') THEN
+        CREATE TYPE "public"."attestation_status" AS ENUM('in_progress', 'submitted');
+    END IF;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'certification_status') THEN
+        CREATE TYPE "public"."certification_status" AS ENUM('draft', 'open', 'closed');
+    END IF;
+END $$;--> statement-breakpoint
 CREATE TABLE "attestation_responses" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"certification_id" uuid NOT NULL,

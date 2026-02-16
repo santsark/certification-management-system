@@ -1,5 +1,13 @@
-CREATE TYPE "public"."mandate_status" AS ENUM('open', 'closed');--> statement-breakpoint
-CREATE TYPE "public"."user_role" AS ENUM('admin', 'mandate_owner', 'attester');--> statement-breakpoint
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'mandate_status') THEN
+        CREATE TYPE "public"."mandate_status" AS ENUM('open', 'closed');
+    END IF;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        CREATE TYPE "public"."user_role" AS ENUM('admin', 'mandate_owner', 'attester');
+    END IF;
+END $$;--> statement-breakpoint
 CREATE TABLE "mandates" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" varchar(255) NOT NULL,

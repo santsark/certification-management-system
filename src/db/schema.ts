@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, boolean, timestamp, pgEnum, index, jsonb, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, timestamp, pgEnum, index, jsonb, unique, integer } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Enums
@@ -80,6 +80,8 @@ export const certificationAssignments = pgTable('certification_assignments', {
         .references(() => users.id, { onDelete: 'cascade' })
         .notNull(),
     assignedAt: timestamp('assigned_at').defaultNow().notNull(),
+    level: integer('level').default(1).notNull(),
+    levelGroupId: uuid('level_group_id'),
 }, (table) => ({
     certificationIdIdx: index('cert_assignments_certification_id_idx').on(table.certificationId),
     attesterIdIdx: index('cert_assignments_attester_id_idx').on(table.attesterId),

@@ -7,24 +7,30 @@ import { createNotification } from '@/lib/notifications';
 import { assertCertNotClosed, AppError } from '@/lib/cert-guards';
 import { z } from 'zod';
 
-const assignAttestersSchema = z.object({
-    attesterIds: z.array(z.string().uuid()),
+const assignmentSchema = z.object({
+    userId: z.string().uuid(),
+    levelGroupId: z.string().uuid().nullable().optional(),
+});
+
+const multiLevelAssignSchema = z.object({
+    l1Attesters: z.array(assignmentSchema),
+    l2Attesters: z.array(assignmentSchema).optional().default([]),
 });
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
         const user = await requireMandateOwner();
-        const { id: certId } = await params;
+        const { id: certId } = await context.params;
         const body = await request.json();
 
         // Guard against closed certifications
         await assertCertNotClosed(certId);
 
         // Validate input
-        const validationResult = assignAttestersSchema.safeParse(body);
+        const validationResult = multiLevelAssignSchema.safeParse(body);
         if (!validationResult.success) {
             return NextResponse.json(
                 { error: 'Validation failed', details: validationResult.error.issues },
@@ -32,10 +38,10 @@ export async function POST(
             );
         }
 
-        const { attesterIds } = validationResult.data;
+        const { l1Attesters, l2Attesters } = validationResult.data;
 
         // Fetch certification and verify ownership
-        const cert = await db
+        const [cert] = await db
             .select({
                 id: certifications.id,
                 title: certifications.title,
@@ -45,7 +51,7 @@ export async function POST(
             .where(eq(certifications.id, certId))
             .limit(1);
 
-        if (!cert || cert.length === 0) {
+        if (!cert) {
             return NextResponse.json(
                 { error: 'Certification not found' },
                 { status: 404 }
@@ -54,7 +60,7 @@ export async function POST(
 
         const mandate = await db.query.mandates.findFirst({
             where: and(
-                eq(mandates.id, cert[0].mandateId),
+                eq(mandates.id, cert.mandateId),
                 or(
                     eq(mandates.ownerId, user.id),
                     eq(mandates.backupOwnerId, user.id)
@@ -69,52 +75,92 @@ export async function POST(
             );
         }
 
-        // Filter out attesters that are already assigned
+        // Combine all new assignments to check for existing
+        const allNewAttesterIds = [
+            ...l1Attesters.map(a => a.userId),
+            ...l2Attesters.map(a => a.userId)
+        ];
+
+        // Get current assignments to determine who to notify (newly assigned)
         const existingAssignments = await db
             .select({ attesterId: certificationAssignments.attesterId })
             .from(certificationAssignments)
-            .where(
-                and(
-                    eq(certificationAssignments.certificationId, certId),
-                    inArray(certificationAssignments.attesterId, attesterIds)
-                )
-            );
+            .where(eq(certificationAssignments.certificationId, certId));
 
         const existingAttesterIds = new Set(existingAssignments.map((a) => a.attesterId));
-        const newAttesterIds = attesterIds.filter((id) => !existingAttesterIds.has(id));
+        const newlyAssignedIds = allNewAttesterIds.filter((id) => !existingAttesterIds.has(id));
 
-        if (newAttesterIds.length === 0) {
-            return NextResponse.json({ message: 'All selected attesters are already assigned' });
+        // Validations:
+        // 1. Ensure L2 attesters are not also L1 attesters (already handled by UI likely, but good to check)
+        const l1Ids = new Set(l1Attesters.map(a => a.userId));
+        for (const l2 of l2Attesters) {
+            if (l1Ids.has(l2.userId)) {
+                return NextResponse.json(
+                    { error: `User ${l2.userId} cannot be both L1 and L2 attester.` },
+                    { status: 400 }
+                );
+            }
         }
 
-        // Verify that the users exist and have the 'attester' role (optional but good practice)
-        // For now, we assume if the ID is passed, it's valid, or let FK constraint fail if not exists.
-        // But better to check role if we want to enforce it strict.
-        // Let's rely on the UI filtering for now + FK constraints for existence.
+        // Transaction: Replace all assignments
+        await db.transaction(async (tx) => {
+            // 1. Delete all existing assignments for this certification
+            await tx
+                .delete(certificationAssignments)
+                .where(eq(certificationAssignments.certificationId, certId));
 
-        // Insert new assignments
-        await db.insert(certificationAssignments).values(
-            newAttesterIds.map((attesterId) => ({
-                certificationId: certId,
-                attesterId,
-            }))
-        );
+            // 2. Insert L1 assignments
+            if (l1Attesters.length > 0) {
+                await tx.insert(certificationAssignments).values(
+                    l1Attesters.map((a) => ({
+                        certificationId: certId,
+                        attesterId: a.userId,
+                        level: 1,
+                        levelGroupId: a.levelGroupId || null,
+                    }))
+                );
+            }
 
-        // Send notifications
-        // We can do this asynchronously or simply await it. detailed result not critical for response.
-        for (const attesterId of newAttesterIds) {
+            // 3. Insert L2 assignments
+            if (l2Attesters.length > 0) {
+                await tx.insert(certificationAssignments).values(
+                    l2Attesters.map((a) => ({
+                        certificationId: certId,
+                        attesterId: a.userId,
+                        level: 2,
+                        levelGroupId: a.levelGroupId,
+                    }))
+                );
+            }
+        });
+
+        // Send notifications to newly assigned users
+        // (Note: we notifications are sent even to L2s, but they will see a locked state or just be informed)
+        // The requirement says: "Show info message: Level 2 reviewers will be notified once all Level 1 attesters in their group submit."
+        // implying we might NOT want to notify L2s right now?
+        // But "L2 reviewers are NOT notified yet (locked until L1 done)" suggests we should skip notification creation for L2s here.
+        // Let's filter newlyAssignedIds to only include L1s for now?
+        // Or just notify them they have been assigned, but they can't do anything?
+        // "L2 reviewers are NOT notified yet (locked until L1 done)." -> This implies NO notification at assignment time for L2.
+
+        const l2Ids = new Set(l2Attesters.map(a => a.userId));
+
+        for (const attesterId of newlyAssignedIds) {
+            // Skip notification for L2s as per requirement
+            if (l2Ids.has(attesterId)) continue;
+
             await createNotification(
                 attesterId,
                 'certification_assigned',
                 'New Certification Assigned',
-                `You have been assigned to complete: ${cert[0].title}`,
+                `You have been assigned to complete: ${cert.title}`,
                 `/attester/certifications/${certId}`
             );
         }
 
         return NextResponse.json({
-            message: `Successfully assigned ${newAttesterIds.length} attesters`,
-            assignedCount: newAttesterIds.length
+            message: `Successfully updated assignments.`,
+            assignedCount: allNewAttesterIds.length
         });
 
     } catch (error) {

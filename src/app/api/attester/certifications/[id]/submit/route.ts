@@ -4,6 +4,7 @@ import { certifications, attestationResponses, certificationAssignments, mandate
 import { eq, and } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { validateSession } from '@/lib/auth';
+import { checkLevelUnlock } from '@/lib/attestation-levels';
 
 interface Answer {
     question_id: string;
@@ -20,7 +21,7 @@ interface Question {
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
         // Get current user session
@@ -37,7 +38,7 @@ export async function POST(
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        const { id: certId } = await params;
+        const { id: certId } = await context.params;
         const userId = session.user.id;
         const body = await request.json();
         const { answers } = body as { answers: Answer[] };
@@ -77,7 +78,7 @@ export async function POST(
 
         // Check if already submitted
         const [existingResponse] = await db
-            .select({ status: attestationResponses.status })
+            .select({ id: attestationResponses.id, status: attestationResponses.status })
             .from(attestationResponses)
             .where(
                 and(
@@ -128,12 +129,7 @@ export async function POST(
                     submittedAt: now,
                     lastSavedAt: now,
                 })
-                .where(
-                    and(
-                        eq(attestationResponses.certificationId, certId),
-                        eq(attestationResponses.attesterId, userId)
-                    )
-                );
+                .where(eq(attestationResponses.id, existingResponse.id));
         } else {
             await db.insert(attestationResponses).values({
                 certificationId: certId,
@@ -145,7 +141,25 @@ export async function POST(
             });
         }
 
-        // Get mandate details for notifications
+        // Multi-Level Attestation: Check for L2 unlock
+        try {
+            const unlockResult = await checkLevelUnlock(certId, userId);
+            if (unlockResult.shouldUnlockL2 && unlockResult.l2AttesterId) {
+                await db.insert(notifications).values({
+                    userId: unlockResult.l2AttesterId,
+                    type: 'level_unlocked',
+                    title: 'Action Required: Level 2 Review Unlocked',
+                    message: `All Level 1 attesters in your group have submitted. You can now proceed with your attestation for "${cert.title}".`,
+                    link: `/attester/certifications/${certId}`,
+                });
+                console.log(`L2 Unlocked: Notification sent to ${unlockResult.l2AttesterId}`);
+            }
+        } catch (unlockError) {
+            // Non-blocking error logging
+            console.error('Error checking level unlock:', unlockError);
+        }
+
+        // Get mandate details for notifications (Mandate Owner)
         const mandate = await db.query.mandates.findFirst({
             where: eq(mandates.id, cert.mandateId),
             columns: {
@@ -155,7 +169,7 @@ export async function POST(
         });
 
         // Get attester name
-        const attester = await db.query.users.findFirst({
+        const attesterUser = await db.query.users.findFirst({
             where: eq(users.id, userId),
             columns: {
                 name: true,
@@ -170,7 +184,7 @@ export async function POST(
                 userId: mandate.ownerId,
                 type: 'attestation_submitted',
                 title: 'Attestation Submitted',
-                message: `${attester?.name || 'An attester'} has completed certification: ${cert.title}`,
+                message: `${attesterUser?.name || 'An attester'} has completed certification: ${cert.title}`,
                 link: `/mandate-owner/certifications/${certId}/responses/${userId}`,
             });
         }
@@ -180,7 +194,7 @@ export async function POST(
                 userId: mandate.backupOwnerId,
                 type: 'attestation_submitted',
                 title: 'Attestation Submitted',
-                message: `${attester?.name || 'An attester'} has completed certification: ${cert.title}`,
+                message: `${attesterUser?.name || 'An attester'} has completed certification: ${cert.title}`,
                 link: `/mandate-owner/certifications/${certId}/responses/${userId}`,
             });
         }
